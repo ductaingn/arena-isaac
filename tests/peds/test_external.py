@@ -257,7 +257,10 @@ def test_blend_ramp_stays_in_one_hemisphere() -> None:
     full = _snap(snap).copy()
 
     _push(provider, 0.0, pose)
-    quats = [provider.evaluate(sim_time=0.0, dt=0.05).rotations[THIGH].copy() for _ in range(6)]
+    _snap(provider)
+    provider.evaluate(sim_time=1.0, dt=1.0)  # the wire went stale: back at rest
+    _push(provider, 1.0, pose)
+    quats = [provider.evaluate(sim_time=1.0, dt=0.05).rotations[THIGH].copy() for _ in range(6)]
 
     for a, b in zip(quats, quats[1:], strict=False):
         assert np.dot(a, b) > 0.9
@@ -298,9 +301,12 @@ def test_rest_pose_blends_bones_the_wire_does_not_touch() -> None:
     provider = _provider(blend_s=0.3, rest_rotations=rest)
 
     _push(provider, 0.0, {"pelvis": IDENTITY})
-    pose = provider.evaluate(sim_time=0.0, dt=0.15)
+    _snap(provider)
+    provider.evaluate(sim_time=1.0, dt=1.0)  # the wire went stale: back at rest
+    _push(provider, 1.0, {"pelvis": IDENTITY})
+    pose = provider.evaluate(sim_time=1.0, dt=0.15)
     np.testing.assert_allclose(pose.rotations[FINGER], quat_slerp(rest, neutral, 0.5)[FINGER], atol=1e-9)
-    pose = provider.evaluate(sim_time=0.05, dt=0.15)
+    pose = provider.evaluate(sim_time=1.05, dt=0.15)
     _same(pose.rotations[FINGER], neutral[FINGER])
 
 
@@ -313,6 +319,20 @@ def test_unknown_names_ignored_without_error_or_output(capsys: pytest.CaptureFix
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == ""
+
+
+def test_the_first_pose_after_a_spawn_or_a_teleport_shows_at_once() -> None:
+    provider = _provider(staleness_s=0.5, blend_s=0.3)
+    pose = {"pelvis": _q(Z, 0.5), "left_hip": _q(X, 1.0)}
+    full = _provider()
+    _push(full, 0.0, pose)
+    expected = _snap(full).copy()
+
+    _push(provider, 0.0, pose)
+    _same_rows(provider.evaluate(sim_time=0.0, dt=0.05).rotations, expected)
+    provider.reset_phase()
+    _push(provider, 0.05, pose)
+    _same_rows(provider.evaluate(sim_time=0.05, dt=0.05).rotations, expected)
 
 
 def test_reset_phase_returns_to_rest() -> None:

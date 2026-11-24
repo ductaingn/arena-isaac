@@ -187,6 +187,7 @@ class ExternalPoseProvider:
         self._blend_s = blend_s
         self._buffer = _FrameBuffer(maxlen=maxlen)
         self._weight = 0.0
+        self._shown = False  # a wire pose has been shown since the spawn or the last teleport
 
         count = len(joint_order)
         self._clip = quat_normalize(np.asarray(neutral_rotations, dtype=float).reshape(count, 4))
@@ -298,7 +299,8 @@ class ExternalPoseProvider:
         return JointPose(rotations=self._rest_rotations.copy(), translations=self._rest_translations.copy())
 
     def evaluate(self, sim_time: float, dt: float) -> JointPose:
-        """Blend from the rest pose toward the buffered wire pose."""
+        """Blend from the rest pose toward the buffered wire pose, after a dropout. The first pose since the spawn or a
+        teleport shows at once: the rest pose is only a stand-in, not a pose to be seen."""
         rest_pose = self._rest_pose()
 
         if self._buffer.newest_stamp is None:
@@ -307,6 +309,8 @@ class ExternalPoseProvider:
 
         stale = self._buffer.staleness(sim_time) > self._staleness_s
         target_weight = 0.0 if stale else 1.0
+        if not stale and not self._shown:
+            self._weight, self._shown = 1.0, True
         step = dt / self._blend_s if self._blend_s > 0.0 else 1.0
         if target_weight > self._weight:
             self._weight = min(target_weight, self._weight + step)
@@ -337,3 +341,4 @@ class ExternalPoseProvider:
     def reset_phase(self) -> None:
         self._buffer.clear()
         self._weight = 0.0
+        self._shown = False
